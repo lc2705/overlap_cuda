@@ -31,10 +31,11 @@ typedef struct
 {
 	int NextState[CH_SIZE];
 	
-	int MatchandDepth;  /*  0xF0000000 && MatchandDepth == 0 -> match  
-						 *  0xF0000000 && MatchandDepth == 0xF0000000  ->  no match 	
-						 *  0x0FFFFFFF && MatchandDepth == Depth in ACSM_STATETABLE 
-						 */
+	int Depth;  
+
+	char Accept; // 1:this is an accept state  
+				 // 0: not accepted
+
 }ACSM_STATETABLE_CUDA;
 
 typedef struct
