@@ -5,6 +5,8 @@
 
 #define CH_SIZE 256
 #define MAX_PATTERN_LEN 200
+#define MAX_LINE 100
+#define MAX_STRING_LEN 1500
 #define ACSM_FAILED_STATE -1
 
 typedef struct _acsm_pattern
@@ -41,20 +43,25 @@ typedef struct
 typedef struct
 {
 	ACSM_STATETABLE 		*acsmStateTable;
-	ACSM_STATETABLE_CUDA	*acsmStateTableCuda;
+	ACSM_STATETABLE_CUDA	*acsmStateTableCuda_h;
+	ACSM_STATETABLE_CUDA	*acsmStateTableCuda_d;
 	
 	ACSM_PATTERN 			*acsmPatterns;
 	
 	int acsmMaxStates;
-	int acsmNumstates;
+	int acsmNumStates;
 	int acsmNumThreads;
+
 }ACSM_STRUCT;
 
 typedef struct
 {
-	int Position;  //the position where match happened
-	int State;     
-}MATCH_RESULT;
+	int numLine;
+	int numByte;
+
+	char **inputArray;
+
+}INPUT_STRUCT;
 
 //initialize acsm struct with the num of threads
 ACSM_STRUCT * acsmNew (int numThread); 
@@ -66,6 +73,9 @@ void acsmCreateHostStateTable(ACSM_STRUCT *acsm);
 
 //create the state table in device according to the table in host
 void acsmCreateDeviceStateTable(ACSM_STRUCT *acsm);  
+
+//input_array is allocated in main function ,   input_array[MAXLINE][MAXLEN]
+void inputStringFromFile(char * filename,char **input_array);
 
 void acsmHostSearch(ACSM_STRUCT *acsm,char *input_file,MATCH_RESULT *result_array);
 

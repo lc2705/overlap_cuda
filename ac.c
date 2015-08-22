@@ -280,6 +280,14 @@ static void Convert_NFA_To_DFA(ACSM_STRUCT *acsm)
 
 	queue_free(&state_q);
 }
+ 
+ //=================CUDA_kERNEL=================
+ 
+__global__ void kernelSearch()
+{
+
+}
+
 
  //==================API========================
 
@@ -393,13 +401,17 @@ void acsmCreateHostStateTable(ACSM_STRUCT *acsm)
 void acsmCreateDeviceStateTable(ACSM_STRUCT *acsm)
 {
 	int i,j;
+	int table_size;
 	ACSM_STATETABLE * table;
 	ACSM_STATETABLE_CUDA * table_cuda;
-	acsm->acsmStateTableCuda = (ACSM_STATETABLE_CUDA*)AC_MALLOC(sizeof(ACSM_STATETABLE_CUDA)*(acsm->acsmNumStates + 1));
-	MEMASSERT(acsm->acsmStateTableCuda,"acsmCreateDeviceStateTable");
+
+	// create StateTableCuda_h
+	table_size = sizeof(ACSM_STATEtABLE_CUDA) * (acsm->acsmNumStates + 1);
+	acsm->acsmStateTableCuda_h = (ACSM_STATETABLE_CUDA*)AC_MALLOC(table_size);
+	MEMASSERT(acsm->acsmStateTableCuda_h,"acsmCreateDeviceStateTable");
 
 	table = acsm->acsmStateTable;
-	table_cuda = acsm->acsmStateTableCuda;
+	table_cuda = acsm->acsmStateTableCuda_h;
 	for( i = 0 ; i <= acsm->acsmNumStates ; i++)
 	{
 		for( j = 0 ; j < CH_SIZE ; j++)
@@ -415,15 +427,37 @@ void acsmCreateDeviceStateTable(ACSM_STRUCT *acsm)
 		table_cuda[i].Depth = table[i].Depth;
 	}
 
+	//create StateTableCuda_d 
+	cudaMalloc(&(acsm->acsmStateTableCuda_d),table_size);
+	cudaMemcpy(acsm->acsmStateTableCuda_d,acsm->acsmStateTableCuda_h,table_size);
 
 }
 
-void acsmHostSearch(ACSM_STRUCT *acsm,char *input_file,MATCH_RESULT *result_array)
+
+void acsmHostSearchFromFile(ACSM_STRUCT *acsm,char *input_file, char *input_string,int *matched_result)
 {
-	
+	int input_size;
+
+	FILE *fp = fopen(input_file,"rb");
+	fseek(fp, 0 , SEEK_END);
+	input_size = ftell (fp);
+	rewind(fp);
+
+	input_string = (char *) AC_MALLOC (sizeof(char) * input_size);
+	MEMASSERT(input_string,"acsmHostSearchFromFile");
+
+	matched_result = (int *) AC_MALLOC (sizeof(int) * input_size);
+	MEMASSERT(matched_result,"acsmHostSearchFromFile");
+	memset(matched_result,0,sizeof(int) * input_size);
+
+	input_size = fread(input_string,1,input_size,fp);
+	fclose(fp);
+
+
+
 }
 
-void acsmDeviceSearch(ACSM_STRUCT *acsm,char *input_file,MATCH_RESULT *result_array)
+void acsmDeviceSearchFromFile(ACSM_STRUCT *acsm,char *input_file, char *input_string,int *matched_result)
 {
 	
 }
