@@ -14,7 +14,6 @@ typedef struct _acsm_pattern
 	struct _acsm_pattern	*next;  
 	unsigned char 			*patrn; //point to the pattern buffer
 	int 					n;  	//length of this pattern 
-	int 					*nmatch_array;
 }ACSM_PATTERN;
 
 typedef struct
@@ -54,14 +53,6 @@ typedef struct
 
 }ACSM_STRUCT;
 
-typedef struct
-{
-	int numLine;
-	int numByte;
-
-	char **inputArray;
-
-}INPUT_STRUCT;
 
 //initialize acsm struct with the num of threads
 ACSM_STRUCT * acsmNew (int numThread); 
@@ -74,14 +65,9 @@ void acsmCreateHostStateTable(ACSM_STRUCT *acsm);
 //create the state table in device according to the table in host
 void acsmCreateDeviceStateTable(ACSM_STRUCT *acsm);  
 
-//input_array is allocated in main function ,   input_array[MAXLINE][MAXLEN]
-void inputStringFromFile(char * filename,char **input_array);
+void acsmHostSearchFromFile(ACSM_STRUCT *acsm,char *input_file,int *input_size,int *matched_result);
 
-void acsmHostSearch(ACSM_STRUCT *acsm,char *input_file,MATCH_RESULT *result_array);
-
-void acsmDeviceSearch(ACSM_STRUCT *acsm,char *input_file,MATCH_RESULT *result_array);
-
-void acsmResultProcess(ACSM_STRUCT *acsm,MATCH_RESULT *result_array);
+void acsmResultProcess(ACSM_STRUCT *acsm,int *matched_result,int input_size);
 
 void acsmFree(ACSM_STRUCT * acsm);
 

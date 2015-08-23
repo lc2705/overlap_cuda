@@ -283,9 +283,42 @@ static void Convert_NFA_To_DFA(ACSM_STRUCT *acsm)
  
  //=================CUDA_kERNEL=================
  
-__global__ void kernelSearch()
+__global__ void kernelSearch(ACSM_STRUCT *acsm,char *input_string,int *matched_result,int input_size)
 {
+	int state = 0;
+	ACSM_STATETABLE_CUDA *table = acsm->acsmStateTableCuda_d;
+	
+	int frag_id = threadIdx.x;
+	int frag_size = input_size/acsm->acsmNumThreads;
+	int frag_beg = frag_id * frag_size;
+	int frag_end = frag_beg + frag_size;
+	if (frag_id == threadIdx.x - 1)
+		frag_end = input_size;
 
+	//stage 1
+	for(i = frag_beg; i < frag_end ; i++)
+	{
+		state = table[state].NextState[input_string[i]];
+		if(table[state].Accept)
+		{
+			matched_result[i] = state;
+		}
+	}
+
+	//stage 2
+	int step = 0;
+	for( ; i < input_size ; i++)
+	{
+		if(table[state].Depth <= step)
+			break;
+		
+		state = table[state].NextState[ input_string[i] ];
+		if(table[state].Accept)
+			matched_result[i] = state;
+		
+		step++;
+	}
+	
 }
 
 
@@ -330,8 +363,6 @@ void acsmAddPatternFromFile(ACSM_STRUCT *acsm, char *filename)
 		pat->patrn = (unsigned char*)AC_MALLOC(sizeof(unsigned char)*(pat->n + 1));
 		memcpy(pat->patrn,buffer,pat->n);
 		memset(pat->patrn + pat->n,0,1);
-	
-		//TODO nmatch_array
 	
 		pat->next = acsm->acsmPatterns;
 		acsm->acsmPatterns = pat;
@@ -434,42 +465,112 @@ void acsmCreateDeviceStateTable(ACSM_STRUCT *acsm)
 }
 
 
-void acsmHostSearchFromFile(ACSM_STRUCT *acsm,char *input_file, char *input_string,int *matched_result)
+void acsmHostSearchFromFile(ACSM_STRUCT *acsm,char *input_file, int *input_size,int *matched_result)
 {
-	int input_size;
+	char *input_string;
+	int size;
 
 	FILE *fp = fopen(input_file,"rb");
 	fseek(fp, 0 , SEEK_END);
-	input_size = ftell (fp);
+	size = ftell (fp);
 	rewind(fp);
 
-	input_string = (char *) AC_MALLOC (sizeof(char) * input_size);
+	input_string = (char *) AC_MALLOC (sizeof(char) * size);
 	MEMASSERT(input_string,"acsmHostSearchFromFile");
 
-	matched_result = (int *) AC_MALLOC (sizeof(int) * input_size);
+	matched_result = (int *) AC_MALLOC (sizeof(int) * size);
 	MEMASSERT(matched_result,"acsmHostSearchFromFile");
-	memset(matched_result,0,sizeof(int) * input_size);
+	memset(matched_result,0,sizeof(int) * size);
 
-	input_size = fread(input_string,1,input_size,fp);
+	size = fread(input_string,1,size,fp);
 	fclose(fp);
 
+	cudaError_t error_t;
+	char *input_string_d = NULL;
+	int *matched_result_d = NULL;
 
+	error_t = cudaMalloc((void **) &input_string_d, sizeof(char) * size);
+	if(error_t != cudaSuccess)
+	{
+		fprintf(stderr, cudaGetErrorString (error_t) );
+		return;
+	}
+	cudaMemcpy((void *) input_string_d , (void *) input_string , sizeof(char) * size, cudaMemcpyHostToDevice);
+
+	error_t = cudaMalloc((void **) &matched_result_d, sizeof(int) * size);
+	if(error_t != cudaSuccess)
+	{
+		fprintf(stderr, cudaGetErrorString (error_t) );
+		return;
+	}
+	cudaMemset((void *) matched_result_d , 0 , sizeof(int) * size);
+
+	kernelSearch<<<1,acsm->acsmNumThreads>>>(ACSM_STRUCT *acsm,char *input_string_d,int *matched_result_d,int size);
+
+	cudaMemcpy((void *) matched_result, (void *) matched_result_d, sizeof(int) * size , cudaMemcpyDeviceToHost);
+
+	cudaFree(input_string_d);
+	cudaFree(matched_result_d);
+	AC_FREE(input_string);
+	AC_FREE(matched_result);
+	
+	*input_size = size;
 
 }
 
-void acsmDeviceSearchFromFile(ACSM_STRUCT *acsm,char *input_file, char *input_string,int *matched_result)
+void acsmResultProcess(ACSM_STRUCT *acsm,int *matched_result,int input_size)
 {
-	
-}
+	int i,state;
+	ACSM_PATTERN *mlist;
 
-void acsmResultProcess(ACSM_STRUCT *acsm,MATCH_RESULT *result_array)
-{
-	
+	for (i = 0; i < input_size ; i++)
+	{
+		if(matched_result[i])
+		{
+			state = matched_result;
+			mlist = acsm->acsmStateTable[state].MatchList;
+
+			fprintf(stdout,"Position %d\tstate %d\n",i,state);
+			for( ; mlist != NULL ; mlist = mlist->next)
+			{
+				fprintf(stdout,"%s\n",mlist->patrn);
+			}
+		}
+	}
 }
 
 void acsmFree(ACSM_STRUCT * acsm)
 {
+	ACSM_PATTERN *pat,*pat_free;
 	
+	//free acsmPattern
+	for (pat = acsm->acsmPattern ; pat != NULL ; pat = pat->next)
+	{
+		pat_free = pat;
+		AC_FREE(pat_free->patrn);
+		AC_FREE(pat_free);
+	}
+
+	//free acsmStateTable
+	for(int i = 0; i < acsm->acsmMaxStates ; i++)
+	{
+		for( pat = acsm->acsmStateTable[i].MatchList ; pat != NULL ; pat = pat->next )
+		{
+			pat_free = pat;
+			AC_FREE(pat_free->patrn);
+			AC_FREE(pat_free);
+		}
+	}
+	AC_FREE(acsm->acsmStateTable);
+
+	//free acsmStateTableCuda_h
+	AC_FREE(acsm->acsmStateTableCuda_h);
+
+	//free acsmStateTableCuda_d
+	cudaFree(acsm->acsmStateTableCuda_d);
+	
+	//free acsm
+	AC_FREE(acsm);
 }
 
 
